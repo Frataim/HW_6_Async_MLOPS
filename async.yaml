@@ -1,0 +1,128 @@
+
+asyncapi: 2.6.0
+info:
+  title: Заблюривание лиц Pipeline
+  version: 1.0.0
+  description: |
+    Асинхронный ML-конвейер для заблюривания лиц на видео.
+    Брокер: RabbitMQ (AMQP).
+
+servers:
+  rabbitmq:
+    url: localhost:5672
+    protocol: amqp
+    description: Локальный RabbitMQ для обмена событиями между сервисами
+
+channels:
+  video.frame.gray.ready:
+    description: Grayscale-кадр после cv2.cvtColor(frame)
+    publish:
+      operationId: preprocessingPublishesGrayFrame
+      summary: Сервис предобработки публикует grayscale-кадр
+      message:
+        $ref: '#/components/messages/GrayFrameMessage'
+    subscribe:
+      operationId: detectorConsumesGrayFrame
+      summary: Сервис детекции лиц получает grayscale-кадр
+      message:
+        $ref: '#/components/messages/GrayFrameMessage'
+
+  video.frame.faces.detected:
+    description: Координаты лиц после detectMultiScale(gray)
+    publish:
+      operationId: detectorPublishesFaces
+      summary: Сервис детекции лиц публикует bounding boxes
+      message:
+        $ref: '#/components/messages/FacesDetectedMessage'
+    subscribe:
+      operationId: blurConsumesDetectedFaces
+      summary: Сервис блюра получает координаты лиц
+      message:
+        $ref: '#/components/messages/FacesDetectedMessage'
+
+  video.frame.blurred.ready:
+    description: Итоговый кадр после apply_mosaic_effect
+    publish:
+      operationId: blurPublishesBlurredFrame
+      summary: Сервис блюра публикует обработанный кадр
+      message:
+        $ref: '#/components/messages/BlurredFrameMessage'
+    subscribe:
+      operationId: storageConsumesBlurredFrame
+      summary: Сервис сохранения результата получает готовый кадр
+      message:
+        $ref: '#/components/messages/BlurredFrameMessage'
+
+components:
+  messages:
+    GrayFrameMessage:
+      name: GrayFrameMessage
+      title: Gray frame
+      payload:
+        type: object
+        properties:
+          frame_id:
+            type: string
+          video_id:
+            type: string
+          gray_frame_path:
+            type: string
+        required:
+          - frame_id
+          - video_id
+          - gray_frame_path
+
+    FacesDetectedMessage:
+      name: FacesDetectedMessage
+      title: Faces detected
+      payload:
+        type: object
+        properties:
+          frame_id:
+            type: string
+          video_id:
+            type: string
+          boxes:
+            type: array
+            items:
+              type: object
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+                w:
+                  type: integer
+                h:
+                  type: integer
+              required:
+                - x
+                - y
+                - w
+                - h
+        required:
+          - frame_id
+          - video_id
+          - boxes
+
+    BlurredFrameMessage:
+      name: BlurredFrameMessage
+      title: Blurred frame
+      payload:
+        type: object
+        properties:
+          frame_id:
+            type: string
+          video_id:
+            type: string
+          blurred_frame_path:
+            type: string
+          status:
+            type: string
+            enum:
+              - done
+        required:
+          - frame_id
+          - video_id
+          - blurred_frame_path
+          - status
